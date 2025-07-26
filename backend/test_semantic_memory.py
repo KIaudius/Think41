@@ -24,7 +24,7 @@ def test_semantic_memory():
         
         # Test messages that should be remembered
         test_messages = [
-            "What's the status of my order #12345?",
+            "What's the status of my order #102?",
             "I ordered a red shirt last week, when will it arrive?",
             "Can you remind me what I ordered before?",
             "What was the price of the product I asked about earlier?"
