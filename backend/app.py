@@ -4,6 +4,7 @@ from models import db, User, Product, Order, OrderItem, DistributionCenter, Inve
 from services import UserService, ProductService, OrderService, ConversationService, ChatMessageService, EcommerceDataService
 import os
 from lang_engine import run_langgraph_chat
+from memory_service import memory_service
 
 app = Flask(__name__)
 CORS(app)
@@ -426,6 +427,54 @@ def chat_api():
         'user_message_id': user_msg.id,
         'ai_message_id': ai_msg.id
     })
+
+# Add these new endpoints after the existing ones
+
+@app.route('/api/memory/stats/<int:user_id>', methods=['GET'])
+def get_memory_stats(user_id):
+    """Get memory statistics for a user"""
+    try:
+        stats = memory_service.get_memory_stats(user_id)
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/memory/cleanup', methods=['POST'])
+def cleanup_memory():
+    """Clean up expired memory entries"""
+    try:
+        data = request.get_json() or {}
+        days = data.get('days', 30)
+        deleted_count = memory_service.cleanup_expired_memory(days)
+        return jsonify({
+            'message': f'Cleaned up {deleted_count} expired memory entries',
+            'deleted_count': deleted_count
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/memory/search/<int:user_id>', methods=['POST'])
+def search_memory(user_id):
+    """Search user's memory"""
+    try:
+        data = request.get_json()
+        query = data.get('query', '')
+        limit = data.get('limit', 5)
+        
+        results = memory_service.retrieve_relevant_memory(
+            user_id=user_id,
+            session_id=data.get('session_id', 0),
+            query=query,
+            limit=limit
+        )
+        
+        return jsonify({
+            'query': query,
+            'results': results,
+            'count': len(results)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     with app.app_context():
