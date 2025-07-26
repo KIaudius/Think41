@@ -3,6 +3,7 @@ from flask_cors import CORS
 from models import db, User, Product, Order, OrderItem, DistributionCenter, InventoryItem, ConversationSession, ChatMessage
 from services import UserService, ProductService, OrderService, ConversationService, ChatMessageService, EcommerceDataService
 import os
+from lang_engine import run_langgraph_chat
 
 app = Flask(__name__)
 CORS(app)
@@ -367,6 +368,64 @@ def get_order_status_for_ai(order_id):
         return jsonify({'error': 'Order not found'}), 404
     
     return jsonify(order_status)
+
+@app.route('/api/chat', methods=['POST'])
+def chat_api():
+    """Chat endpoint: user sends message, LLM responds, all persisted"""
+    data = request.get_json()
+    user_id = data.get('user_id')
+    user_message = data.get('message')
+    session_id = data.get('session_id')
+    
+    if not user_id or not user_message:
+        return jsonify({'error': 'user_id and message are required'}), 400
+    
+    # If no session_id, create a new session
+    if not session_id:
+        session = ConversationService.create_session(user_id)
+        session_id = session.id
+    else:
+        session = ConversationService.get_session(session_id)
+        if not session:
+            return jsonify({'error': 'Session not found'}), 404
+    
+    # Persist user message
+    user_msg = ChatMessageService.add_message(
+        session_id=session_id,
+        message_type='user',
+        content=user_message,
+        metadata=None
+    )
+    
+    # Run LangGraph workflow
+    result = run_langgraph_chat(user_id, session_id, user_message)
+    ai_response = result.get('ai_response')
+    error = result.get('error')
+    db_result = result.get('db_result')
+    intent = result.get('intent')
+    
+    # Persist AI message
+    ai_msg = ChatMessageService.add_message(
+        session_id=session_id,
+        message_type='ai',
+        content=ai_response,
+        metadata={
+            'intent': intent,
+            'db_result': db_result,
+            'error': error
+        }
+    )
+    
+    return jsonify({
+        'session_id': session_id,
+        'user_message': user_message,
+        'ai_response': ai_response,
+        'intent': intent,
+        'db_result': db_result,
+        'error': error,
+        'user_message_id': user_msg.id,
+        'ai_message_id': ai_msg.id
+    })
 
 if __name__ == '__main__':
     with app.app_context():
